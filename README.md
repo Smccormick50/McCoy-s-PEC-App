@@ -13,7 +13,7 @@ CapEx depreciation terms from the original workbook.
 - **Edit page** — edit all header fields, expand any of the 23 categories to edit/add/remove line items (name, vendor, amount, taxable yes/no), add or remove whole categories, add notes, and add/remove photos. Subtotal/Tax/Total update live at the bottom as you type.
 - **Photos** — attach general jobsite/document photos to a project (not tied to individual line items). Photos are automatically resized before saving so they don't take up much space.
 - **Export / Import JSON** — export any single project, or all projects at once, as a `.json` file you can back up, email, or move to another device. Importing a file adds those project(s) to your list (it won't overwrite existing ones).
-- **Works offline** once loaded — there's no server. Everything is stored locally in the browser you're using via IndexedDB.
+- **Works offline** once loaded — there's no server. Everything is stored locally in the browser you're using, via [localforage](https://localforage.github.io/localForage/) (the same storage library used by the McCoy's Inspection app), which automatically picks the best available storage method on your device and falls back gracefully if one is blocked.
 
 ## Important — what this is *not*
 
@@ -77,7 +77,7 @@ pce-app/
   styles.css         all styling
   app.js             routing, screens, and all interactivity
   model.js           calculations (subtotal/tax/total, summaries) + import/export
-  db.js              local storage (IndexedDB) wrapper
+  db.js              local storage wrapper (built on localforage)
   data.js            the 23-category / 217-item master template + CSI division list
   manifest.json       iOS/Android "Add to Home Screen" config
   icon-180.png / icon-512.png   app icons

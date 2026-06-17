@@ -5,11 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mc PCE</title>
 
+<script>
+(function () {
+  function showBootError(detail) {
+    var app = document.getElementById('app');
+    if (!app || app.dataset.booted === '1') return; // real app already rendered fine
+    app.innerHTML =
+      '<div style="padding:24px;font-family:-apple-system,sans-serif;color:#1F2421;">' +
+      '<strong style="font-size:16px;">The app hit an error while loading.</strong>' +
+      '<p style="font-size:13px;color:#51585B;margin:10px 0 16px;">Please screenshot this whole message and send it back — it tells us exactly what went wrong.</p>' +
+      '<pre style="white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:12px;font-size:12px;line-height:1.5;">' +
+      String(detail).replace(/&/g, '&amp;').replace(/</g, '&lt;') +
+      '</pre></div>';
+  }
+  window.addEventListener('error', function (e) {
+    var msg = (e.error && e.error.stack) ? e.error.stack : (e.message + ' (' + e.filename + ':' + e.lineno + ':' + e.colno + ')');
+    showBootError(msg);
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var reason = e.reason;
+    showBootError('Unhandled promise rejection: ' + ((reason && reason.stack) ? reason.stack : String(reason)));
+  });
+  document.addEventListener('DOMContentLoaded', function () {
+    setTimeout(function () {
+      var app = document.getElementById('app');
+      if (app && app.dataset.booted !== '1' && !app.innerHTML.trim()) {
+        showBootError('The app never finished loading and no specific error was reported. This usually means one of the script files (data.js, db.js, model.js, app.js) failed to load — double check all files from the zip were uploaded to the same folder.');
+      }
+    }, 6000);
+  });
+})();
+</script>
+
 <!-- iOS "Add to Home Screen" support -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mc PCE">
-<meta name="theme-color" content="#14283D">
+<meta name="theme-color" content="#0E4A2A">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
 <link rel="manifest" href="manifest.json">
@@ -19,6 +51,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 
 <link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
 </head>
 <body>
 

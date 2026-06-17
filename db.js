@@ -1,64 +1,34 @@
-// Minimal IndexedDB wrapper. Everything stays on-device in the browser
-// the app is opened in — there is no server/backend.
+// Storage wrapper built on localforage — the same storage library used by
+// the McCoy's Inspection app, which is proven to work reliably across
+// devices/browsers there. localforage automatically picks the best available
+// backend (IndexedDB, then WebSQL, then localStorage) and handles a lot of
+// browser-quirk edge cases internally, rather than us reinventing that.
+// Everything stays on-device; there is no server/backend either way.
 const DB = (() => {
-  const DB_NAME = 'pce-estimator';
-  const DB_VERSION = 1;
-  const STORE = 'projects';
-  let dbPromise = null;
-
-  function open() {
-    if (dbPromise) return dbPromise;
-    dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: 'id' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-    return dbPromise;
-  }
-
-  async function tx(mode) {
-    const db = await open();
-    return db.transaction(STORE, mode).objectStore(STORE);
-  }
+  const store = localforage.createInstance({
+    name: 'pce-estimator',
+    storeName: 'projects',
+    driver: [localforage.INDEXEDDB, localforage.WEBSQL, localforage.LOCALSTORAGE]
+  });
 
   return {
     async getAll() {
-      const store = await tx('readonly');
-      return new Promise((resolve, reject) => {
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
+      const keys = await store.keys();
+      const items = await Promise.all(keys.map(k => store.getItem(k)));
+      return items.filter(Boolean);
     },
     async get(id) {
-      const store = await tx('readonly');
-      return new Promise((resolve, reject) => {
-        const req = store.get(id);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => reject(req.error);
-      });
+      return (await store.getItem(id)) || null;
     },
     async put(project) {
-      const store = await tx('readwrite');
-      return new Promise((resolve, reject) => {
-        const req = store.put(project);
-        req.onsuccess = () => resolve(project);
-        req.onerror = () => reject(req.error);
-      });
+      await store.setItem(project.id, project);
+      return project;
     },
     async delete(id) {
-      const store = await tx('readwrite');
-      return new Promise((resolve, reject) => {
-        const req = store.delete(id);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-      });
+      await store.removeItem(id);
+    },
+    async driverName() {
+      try { return store.driver(); } catch (e) { return 'unknown'; }
     }
   };
 })();
