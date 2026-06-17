@@ -58,7 +58,7 @@ body.is-edit #app { padding-bottom: 110px; }
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 14px;
+  padding: calc(14px + env(safe-area-inset-top)) 14px 14px;
   background: var(--blueprint);
   background-image:
     linear-gradient(var(--blueprint-2) 1px, transparent 1px),
@@ -155,7 +155,7 @@ body.is-edit #app { padding-bottom: 110px; }
 .card-actions .icon-btn.danger { color: var(--tape-dark); }
 
 .fab {
-  position: fixed; left: 50%; bottom: 22px;
+  position: fixed; left: 50%; bottom: max(22px, calc(env(safe-area-inset-bottom) + 14px));
   transform: translateX(-50%);
   background: var(--tape);
   color: #fff;
@@ -329,7 +329,7 @@ textarea#f-notes { width: 100%; padding: 10px; border: 1px solid var(--line); bo
   max-width: 640px; margin: 0 auto;
   background: var(--blueprint);
   display: grid; grid-template-columns: 1fr 1fr 1.2fr;
-  padding: 12px 14px;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--blueprint-2);
   z-index: 40;
 }
