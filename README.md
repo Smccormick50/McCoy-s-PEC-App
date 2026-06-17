@@ -91,3 +91,7 @@ pce-app/
 - **Total** = Subtotal + Tax
 - **CSI Division Summary** groups every line item by its division code (the same 01–33 codes from your CSI Div List sheet)
 - **CapEx Depreciation Summary** groups by each category's depreciation term (Building 39.5/15/7 Yrs, WSRT 7/5 Yrs, FFE 7/5 Yrs, Expenses, Added Item) — matching your Main Summary sheet's accounting categories
+
+## If the app gets stuck and won't save
+
+At the bottom of the project list screen there's a small **"Erase All App Data (troubleshooting)"** link. It double-confirms before doing anything, then completely wipes this app's local storage in your browser and reloads — useful if a previous version of the app left behind data that's now causing conflicts. This deletes everything saved in this browser, so export anything important first if you can.
