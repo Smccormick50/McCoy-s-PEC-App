@@ -103,7 +103,7 @@ async function renderRoute() {
   } catch (err) {
     console.error('Storage error:', err);
     document.body.classList.remove('is-edit');
-    app.innerHTML = storageErrorTemplate();
+    app.innerHTML = storageErrorTemplate(err);
     const retryBtn = document.getElementById('btnRetryStorage');
     if (retryBtn) retryBtn.addEventListener('click', () => renderRoute());
   }
@@ -111,7 +111,8 @@ async function renderRoute() {
   window.scrollTo(0, 0);
 }
 
-function storageErrorTemplate() {
+function storageErrorTemplate(err) {
+  const detail = err ? `${err.name || ''} ${err.message || ''}`.trim() || String(err) : 'Unknown error';
   return `
   <header class="topbar">${brandMark('PCE Estimator')}</header>
   <main class="list-main">
@@ -120,6 +121,7 @@ function storageErrorTemplate() {
       <h2>Can't access local storage</h2>
       <p>This browser tab won't let the app save data. This is usually caused by <strong>Private/Incognito browsing</strong>, or a browser setting that blocks site data (e.g. Safari's "Block All Cookies", or an ad/privacy blocker).</p>
       <p class="muted" style="margin-top:14px;">Try opening this page in a normal (non-private) window, or a different browser, then tap below.</p>
+      <pre style="white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:10px;font-size:11.5px;text-align:left;margin-top:14px;">Technical detail: ${escapeHtml(detail)}</pre>
       <button class="btn" id="btnRetryStorage" style="margin:18px auto 0; max-width:200px;">Try again</button>
     </div>
   </main>`;
@@ -178,7 +180,8 @@ function projectCard(p) {
 
 function notifyStorageError(err) {
   console.error('Storage error:', err);
-  alert("Couldn't save — this browser tab may be blocking local storage (common in Private/Incognito mode, or with \"Block All Cookies\" enabled in Safari). Try a normal window or a different browser.");
+  const detail = (err && (err.name || err.message)) ? `${err.name || ''} ${err.message || ''}`.trim() : String(err);
+  alert("Couldn't save — this browser tab may be blocking local storage (common in Private/Incognito mode, or with \"Block All Cookies\" enabled in Safari). Try a normal window or a different browser.\n\nTechnical detail: " + detail);
 }
 
 function bindListEvents() {
