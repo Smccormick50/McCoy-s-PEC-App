@@ -107,6 +107,7 @@ async function renderRoute() {
     const retryBtn = document.getElementById('btnRetryStorage');
     if (retryBtn) retryBtn.addEventListener('click', () => renderRoute());
   }
+  app.dataset.booted = '1';
   window.scrollTo(0, 0);
 }
 
