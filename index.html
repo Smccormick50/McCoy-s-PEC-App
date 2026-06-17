@@ -27,7 +27,8 @@
 <div id="app"></div>
 
 <!-- hidden file inputs, reused across views -->
-<input type="file" id="photoInput" accept="image/*" multiple hidden>
+<input type="file" id="photoInput" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" multiple hidden>
+<input type="file" id="photoCameraInput" accept="image/*" capture="environment" hidden>
 <input type="file" id="importInput" accept="application/json" hidden>
 
 <script src="data.js"></script>

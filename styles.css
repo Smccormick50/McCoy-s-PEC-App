@@ -236,6 +236,31 @@ body.is-edit #app { padding-bottom: 110px; }
 }
 .photo-thumb .photo-delete { position: absolute; top: 6px; right: 6px; background: rgba(20,40,61,0.7); color: #fff; }
 
+.dropzone {
+  border: 1.5px dashed var(--line-dark);
+  border-radius: 6px;
+  padding: 10px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.dropzone .photo-grid:empty { display: none; }
+.dropzone-hint {
+  margin: 8px 2px 2px; font-size: 12px; color: var(--ink-soft); text-align: center;
+}
+.dropzone.drag-over {
+  background: rgba(217, 98, 43, 0.08);
+  border-color: var(--tape);
+}
+
+.file-card, .file-card-preview {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  height: 130px; padding: 10px; text-decoration: none; color: var(--ink);
+  background: var(--vellum-2);
+}
+.file-card { border: 1px solid var(--line); border-radius: 4px; }
+.file-card-icon svg { width: 30px; height: 30px; stroke: var(--blueprint); fill: none; stroke-width: 1.6; }
+.file-card-name { font-size: 12px; font-weight: 600; text-align: center; word-break: break-word; padding: 0 4px; }
+.file-card-caption { font-size: 11px; color: var(--ink-soft); }
+
 .lightbox {
   position: fixed; inset: 0; background: rgba(10,16,22,0.92); z-index: 100;
   display: flex; align-items: center; justify-content: center; padding: 20px;
@@ -249,8 +274,9 @@ body.is-edit #app { padding-bottom: 110px; }
   font-family: var(--font-display); font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;
   margin: 0 0 12px; color: var(--ink-soft);
 }
-.block-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.block-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .block-header h3 { margin: 0; }
+.block-header-actions { display: flex; gap: 14px; }
 
 .field { display: block; margin-bottom: 10px; }
 .field span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin-bottom: 4px; }

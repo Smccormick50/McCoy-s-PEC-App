@@ -206,6 +206,9 @@ function normalizeImportedProject(p) {
   merged.photos = Array.isArray(merged.photos) ? merged.photos.map(ph => ({
     id: uid('photo'),
     dataUrl: ph.dataUrl,
+    mimeType: ph.mimeType || 'image/jpeg',
+    fileName: ph.fileName || '',
+    isImage: ph.isImage !== false,
     caption: ph.caption || '',
     addedAt: ph.addedAt || new Date().toISOString()
   })).filter(ph => !!ph.dataUrl) : [];
