@@ -103,16 +103,14 @@ async function renderRoute() {
   } catch (err) {
     console.error('Storage error:', err);
     document.body.classList.remove('is-edit');
-    app.innerHTML = storageErrorTemplate(err);
+    app.innerHTML = storageErrorTemplate();
     const retryBtn = document.getElementById('btnRetryStorage');
     if (retryBtn) retryBtn.addEventListener('click', () => renderRoute());
   }
-  app.dataset.booted = '1';
   window.scrollTo(0, 0);
 }
 
-function storageErrorTemplate(err) {
-  const detail = err ? `${err.name || ''} ${err.message || ''}`.trim() || String(err) : 'Unknown error';
+function storageErrorTemplate() {
   return `
   <header class="topbar">${brandMark('PCE Estimator')}</header>
   <main class="list-main">
@@ -121,7 +119,6 @@ function storageErrorTemplate(err) {
       <h2>Can't access local storage</h2>
       <p>This browser tab won't let the app save data. This is usually caused by <strong>Private/Incognito browsing</strong>, or a browser setting that blocks site data (e.g. Safari's "Block All Cookies", or an ad/privacy blocker).</p>
       <p class="muted" style="margin-top:14px;">Try opening this page in a normal (non-private) window, or a different browser, then tap below.</p>
-      <pre style="white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:10px;font-size:11.5px;text-align:left;margin-top:14px;">Technical detail: ${escapeHtml(detail)}</pre>
       <button class="btn" id="btnRetryStorage" style="margin:18px auto 0; max-width:200px;">Try again</button>
     </div>
   </main>`;
@@ -180,8 +177,7 @@ function projectCard(p) {
 
 function notifyStorageError(err) {
   console.error('Storage error:', err);
-  const detail = (err && (err.name || err.message)) ? `${err.name || ''} ${err.message || ''}`.trim() : String(err);
-  alert("Couldn't save — this browser tab may be blocking local storage (common in Private/Incognito mode, or with \"Block All Cookies\" enabled in Safari). Try a normal window or a different browser.\n\nTechnical detail: " + detail);
+  alert("Couldn't save — this browser tab may be blocking local storage (common in Private/Incognito mode, or with \"Block All Cookies\" enabled in Safari). Try a normal window or a different browser.");
 }
 
 function bindListEvents() {
@@ -236,8 +232,6 @@ function viewTemplate(p) {
   const total = computeTotal(p);
   const divSummary = computeDivisionSummary(p).filter(d => d.amount !== 0);
   const depSummary = computeDepreciationSummary(p).filter(d => d.amount !== 0);
-  const images = p.photos.filter(isImageAttachment);
-  const documents = p.photos.filter(ph => !isImageAttachment(ph));
   const categoryRows = p.categories.map(cat => {
     const sub = computeCategorySubtotal(cat);
     if (sub === 0) return '';
@@ -296,14 +290,10 @@ function viewTemplate(p) {
 
     ${p.notes ? `<section class="ledger-block"><h3>Notes</h3><p class="notes-text">${escapeHtml(p.notes)}</p></section>` : ''}
 
-    ${images.length ? `<section class="ledger-block">
-      <h3>Photos</h3>
-      <div class="photo-grid">${images.map(photoThumb).join('')}</div>
-    </section>` : ''}
-    ${!images.length && !documents.length ? `<section class="ledger-block">
+    <section class="ledger-block no-print">
       <h3>Photos &amp; Files</h3>
-      <p class="muted">No photos or files added yet.</p>
-    </section>` : ''}
+      ${p.photos.length ? `<div class="photo-grid">${p.photos.map(photoThumb).join('')}</div>` : '<p class="muted">No photos or files added yet.</p>'}
+    </section>
 
     <div class="action-row no-print">
       <button class="btn" id="btnDuplicate">${ICONS.duplicate}<span>Duplicate</span></button>
@@ -311,30 +301,7 @@ function viewTemplate(p) {
       <button class="btn" id="btnPrint">${ICONS.print}<span>Print / PDF</span></button>
       <button class="btn danger" id="btnDelete">${ICONS.trash}<span>Delete</span></button>
     </div>
-  </main>
-  ${documents.map(documentPageTemplate).join('')}`;
-}
-
-function documentPageTemplate(file) {
-  const isPdf = (file.mimeType || '').includes('pdf');
-  const body = isPdf
-    ? `<embed src="${file.dataUrl}" type="application/pdf" class="doc-embed">`
-    : `<div class="doc-placeholder">
-         <span class="file-card-icon">${fileIcon()}</span>
-         <p>This file type can't be displayed inline — use "Open" to view it, or find it in an exported JSON backup.</p>
-       </div>`;
-  return `
-  <section class="doc-page printable">
-    <div class="doc-page-header">
-      <span class="file-card-icon">${fileIcon()}</span>
-      <div>
-        <h4>${escapeHtml(file.fileName || 'Attached file')}</h4>
-        ${file.caption ? `<p class="doc-caption">${escapeHtml(file.caption)}</p>` : ''}
-      </div>
-      <a class="link-btn no-print" href="${file.dataUrl}" download="${attr(file.fileName || 'file')}">${ICONS.download} Open</a>
-    </div>
-    ${body}
-  </section>`;
+  </main>`;
 }
 
 function isImageAttachment(file) {
