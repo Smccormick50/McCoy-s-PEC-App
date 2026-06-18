@@ -1,0 +1,318 @@
+// Generates a real, downloadable PDF file for a project, entirely client-side.
+// Replaces window.print() — printing from an iOS home-screen app (standalone
+// mode) is a known, longstanding WebKit limitation (the print preview never
+// renders), so this produces an actual .pdf file directly instead, which
+// works identically on every platform.
+//
+// Uses jsPDF (bundled locally as jspdf.umd.min.js) to lay out the report
+// text/tables/photos, then hands the result to pdf-lib (bundled locally as
+// pdf-lib.min.js) to merge in real pages from any attached PDF documents,
+// so those still end up "each on their own page" inside the one final file.
+
+const PDF_PAGE_W = 612, PDF_PAGE_H = 792, PDF_MARGIN = 56;
+const PDF_CONTENT_W = PDF_PAGE_W - PDF_MARGIN * 2;
+const PDF_GREEN = [14, 74, 42];
+const PDF_YELLOW = [245, 209, 22];
+const PDF_TEXT = [26, 26, 26];
+const PDF_MUTED = [110, 105, 92];
+const PDF_LINE = [214, 209, 196];
+
+function pdfLoadImageAsDataUrl(url) {
+  if (typeof fetch === 'undefined') return Promise.resolve(null);
+  return fetch(url)
+    .then(r => { if (!r.ok) throw new Error('logo fetch failed'); return r.blob(); })
+    .then(blob => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    }))
+    .catch(() => null);
+}
+
+function pdfDataUrlToBytes(dataUrl) {
+  const base64 = dataUrl.split(',')[1] || '';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function pdfDownloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// Mutable layout cursor shared across helper functions for one report build.
+function makeCursor(doc) {
+  return {
+    doc,
+    y: PDF_MARGIN,
+    ensure(neededHeight) {
+      if (this.y + neededHeight > PDF_PAGE_H - PDF_MARGIN) {
+        this.doc.addPage();
+        this.y = PDF_MARGIN;
+      }
+    }
+  };
+}
+
+function pdfSectionTitle(c, text) {
+  c.ensure(28);
+  c.doc.setFont('helvetica', 'bold');
+  c.doc.setFontSize(11);
+  c.doc.setTextColor(...PDF_TEXT);
+  c.doc.text(text.toUpperCase(), PDF_MARGIN, c.y);
+  c.doc.setDrawColor(...PDF_LINE);
+  c.doc.setLineWidth(0.75);
+  c.doc.line(PDF_MARGIN, c.y + 5, PDF_PAGE_W - PDF_MARGIN, c.y + 5);
+  c.y += 20;
+}
+
+function pdfTableRows(c, rows, colWidths, align) {
+  c.doc.setFont('helvetica', 'normal');
+  c.doc.setFontSize(10);
+  rows.forEach(cols => {
+    c.ensure(16);
+    c.doc.setTextColor(...PDF_TEXT);
+    let cx = PDF_MARGIN;
+    cols.forEach((val, i) => {
+      const w = colWidths[i];
+      if (align[i] === 'right') {
+        c.doc.text(String(val), cx + w, c.y, { align: 'right' });
+      } else {
+        c.doc.text(String(val), cx, c.y);
+      }
+      cx += w;
+    });
+    c.y += 15;
+    c.doc.setDrawColor(...PDF_LINE);
+    c.doc.setLineWidth(0.5);
+    c.doc.line(PDF_MARGIN, c.y - 5, PDF_PAGE_W - PDF_MARGIN, c.y - 5);
+  });
+  c.y += 8;
+}
+
+function pdfEmptyRow(c, label) {
+  c.ensure(16);
+  c.doc.setFont('helvetica', 'italic');
+  c.doc.setFontSize(10);
+  c.doc.setTextColor(...PDF_MUTED);
+  c.doc.text(label, PDF_MARGIN, c.y);
+  c.y += 18;
+}
+
+async function buildProjectReportPdf(project) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const c = makeCursor(doc);
+
+  // ---- Header ----
+  const logoDataUrl = await pdfLoadImageAsDataUrl('mccoys-logo.png');
+  if (logoDataUrl) {
+    try {
+      const logoH = 26;
+      const logoW = logoH * (2048 / 1010);
+      doc.addImage(logoDataUrl, 'PNG', PDF_MARGIN, c.y, logoW, logoH);
+    } catch (e) { /* skip logo if it fails to embed */ }
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...PDF_MUTED);
+  doc.text('PROJECT COST ESTIMATE', PDF_PAGE_W - PDF_MARGIN, c.y + 18, { align: 'right' });
+  c.y += 46;
+
+  // ---- Status + project name ----
+  const isFinal = project.status === 'final';
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...(isFinal ? PDF_GREEN : PDF_MUTED));
+  doc.text(isFinal ? 'FINAL' : 'DRAFT', PDF_MARGIN, c.y);
+  c.y += 18;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(19);
+  doc.setTextColor(...PDF_TEXT);
+  doc.text(project.name || 'Untitled Project', PDF_MARGIN, c.y);
+  c.y += 28;
+
+  // ---- Info grid (2 columns) ----
+  const infoPairs = [
+    ['Store', project.store || '—'], ['Project No.', project.projectNumber || '—'],
+    ['Estimator', project.estimator || '—'], ['Date', formatDateDisplay(project.date)],
+    ['Approved By', project.approvedBy || '—'], ['Approved Date', formatDateDisplay(project.approvedDate)],
+    ['Start', formatDateDisplay(project.startDate)], ['End', formatDateDisplay(project.endDate)]
+  ];
+  const colW = PDF_CONTENT_W / 2;
+  for (let i = 0; i < infoPairs.length; i += 2) {
+    c.ensure(34);
+    [infoPairs[i], infoPairs[i + 1]].forEach((pair, col) => {
+      if (!pair) return;
+      const x = PDF_MARGIN + col * colW;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...PDF_MUTED);
+      doc.text(pair[0].toUpperCase(), x, c.y);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_TEXT);
+      doc.text(String(pair[1]), x, c.y + 14);
+    });
+    c.y += 32;
+  }
+  c.y += 10;
+
+  // ---- Cost summary box ----
+  const subtotal = computeSubtotal(project), tax = computeTax(project), total = computeTotal(project);
+  c.ensure(88);
+  doc.setFillColor(...PDF_GREEN);
+  doc.roundedRect(PDF_MARGIN, c.y, PDF_CONTENT_W, 78, 4, 4, 'F');
+  let sy = c.y + 22;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(235, 232, 220);
+  doc.text('Subtotal', PDF_MARGIN + 16, sy);
+  doc.text(formatCurrency(subtotal), PDF_PAGE_W - PDF_MARGIN - 16, sy, { align: 'right' });
+  sy += 18;
+  doc.text(`Tax (${num(project.taxRate).toFixed(2)}%)`, PDF_MARGIN + 16, sy);
+  doc.text(formatCurrency(tax), PDF_PAGE_W - PDF_MARGIN - 16, sy, { align: 'right' });
+  sy += 24;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...PDF_YELLOW);
+  doc.text('Total', PDF_MARGIN + 16, sy);
+  doc.text(formatCurrency(total), PDF_PAGE_W - PDF_MARGIN - 16, sy, { align: 'right' });
+  c.y += 98;
+
+  // ---- Cost Categories ----
+  pdfSectionTitle(c, 'Cost Categories');
+  const catRows = project.categories
+    .map(cat => [cat.code, cat.title, formatCurrency(computeCategorySubtotal(cat)), computeCategorySubtotal(cat)])
+    .filter(r => r[3] !== 0)
+    .map(r => [r[0], r[1], r[2]]);
+  if (catRows.length) pdfTableRows(c, catRows, [50, 330, 120], ['left', 'left', 'right']);
+  else pdfEmptyRow(c, 'No costs entered yet.');
+
+  // ---- CSI Division Summary ----
+  pdfSectionTitle(c, 'CSI Division Summary');
+  const divSummary = computeDivisionSummary(project).filter(d => d.amount !== 0);
+  if (divSummary.length) {
+    pdfTableRows(c, divSummary.map(d => [d.code, d.name, formatCurrency(d.amount)]), [50, 330, 120], ['left', 'left', 'right']);
+  } else pdfEmptyRow(c, 'No costs entered yet.');
+
+  // ---- CapEx Depreciation Summary ----
+  pdfSectionTitle(c, 'CapEx Depreciation Summary');
+  const depSummary = computeDepreciationSummary(project).filter(d => d.amount !== 0);
+  if (depSummary.length) {
+    pdfTableRows(c, depSummary.map(d => [d.term, formatCurrency(d.amount)]), [380, 120], ['left', 'right']);
+  } else pdfEmptyRow(c, 'No costs entered yet.');
+
+  // ---- Notes ----
+  if (project.notes && project.notes.trim()) {
+    pdfSectionTitle(c, 'Notes');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...PDF_TEXT);
+    const lines = doc.splitTextToSize(project.notes, PDF_CONTENT_W);
+    lines.forEach(line => {
+      c.ensure(15);
+      doc.text(line, PDF_MARGIN, c.y);
+      c.y += 14;
+    });
+    c.y += 8;
+  }
+
+  // ---- Photos ----
+  const images = project.photos.filter(isImageAttachment);
+  if (images.length) {
+    pdfSectionTitle(c, 'Photos');
+    const cellW = (PDF_CONTENT_W - 14) / 2, cellImgH = 150, cellTotalH = cellImgH + 22;
+    for (let i = 0; i < images.length; i += 2) {
+      c.ensure(cellTotalH);
+      const rowPhotos = [images[i], images[i + 1]];
+      rowPhotos.forEach((photo, col) => {
+        if (!photo) return;
+        const x = PDF_MARGIN + col * (cellW + 14);
+        try {
+          const props = doc.getImageProperties(photo.dataUrl);
+          const scale = Math.min(cellW / props.width, cellImgH / props.height);
+          const w = props.width * scale, h = props.height * scale;
+          const fmt = (photo.mimeType || '').indexOf('png') !== -1 ? 'PNG' : 'JPEG';
+          doc.addImage(photo.dataUrl, fmt, x + (cellW - w) / 2, c.y, w, h);
+        } catch (e) { /* skip photo if it fails to decode */ }
+        if (photo.caption) {
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...PDF_MUTED);
+          doc.text(photo.caption, x, c.y + cellImgH + 12, { maxWidth: cellW });
+        }
+      });
+      c.y += cellTotalH;
+    }
+  }
+
+  return doc;
+}
+
+async function addAttachmentPlaceholderPage(pdfLibDoc, file, embedFailed) {
+  const page = pdfLibDoc.addPage([PDF_PAGE_W, PDF_PAGE_H]);
+  const fontBold = await pdfLibDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+  const fontReg = await pdfLibDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  page.drawText(embedFailed ? 'Attached file (could not be embedded)' : 'Attached file', {
+    x: PDF_MARGIN, y: PDF_PAGE_H - 90, size: 14, font: fontBold, color: PDFLib.rgb(0.08, 0.08, 0.08)
+  });
+  page.drawText(file.fileName || 'Untitled file', {
+    x: PDF_MARGIN, y: PDF_PAGE_H - 112, size: 12, font: fontReg, color: PDFLib.rgb(0.2, 0.2, 0.2)
+  });
+  if (file.caption) {
+    page.drawText(file.caption, { x: PDF_MARGIN, y: PDF_PAGE_H - 130, size: 10, font: fontReg, color: PDFLib.rgb(0.43, 0.41, 0.36) });
+  }
+  page.drawText('This file type can\'t be displayed inline in the PDF. Use "Open" in the app, or an exported JSON backup, to view its original content.', {
+    x: PDF_MARGIN, y: PDF_PAGE_H - 156, size: 10, font: fontReg, color: PDFLib.rgb(0.43, 0.41, 0.36),
+    maxWidth: PDF_CONTENT_W, lineHeight: 14
+  });
+}
+
+// Main entry point: builds the report, merges in any real attached PDFs as
+// extra pages, and triggers a download of the final single .pdf file.
+async function exportProjectPdf(project) {
+  const reportDoc = await buildProjectReportPdf(project);
+  const reportBytes = reportDoc.output('arraybuffer');
+
+  const documents = project.photos.filter(ph => !isImageAttachment(ph));
+  const safeName = (project.name || 'project').replace(/[^a-z0-9\-_ ]/gi, '').trim().replace(/\s+/g, '_');
+  const filename = `PCE_${safeName || 'project'}.pdf`;
+
+  if (!documents.length || typeof PDFLib === 'undefined') {
+    pdfDownloadBlob(new Blob([reportBytes], { type: 'application/pdf' }), filename);
+    return;
+  }
+
+  let merged;
+  try {
+    merged = await PDFLib.PDFDocument.load(reportBytes);
+  } catch (e) {
+    console.warn('pdf-lib could not load the generated report; downloading it without attachments merged.', e);
+    pdfDownloadBlob(new Blob([reportBytes], { type: 'application/pdf' }), filename);
+    return;
+  }
+
+  for (const file of documents) {
+    try {
+      if ((file.mimeType || '').indexOf('pdf') !== -1) {
+        const bytes = pdfDataUrlToBytes(file.dataUrl);
+        const attachmentDoc = await PDFLib.PDFDocument.load(bytes);
+        const copiedPages = await merged.copyPages(attachmentDoc, attachmentDoc.getPageIndices());
+        copiedPages.forEach(p => merged.addPage(p));
+      } else {
+        await addAttachmentPlaceholderPage(merged, file, false);
+      }
+    } catch (e) {
+      console.warn('Could not embed attachment "' + (file.fileName || '') + '":', e);
+      try { await addAttachmentPlaceholderPage(merged, file, true); } catch (e2) { /* give up on this one file */ }
+    }
+  }
+
+  const finalBytes = await merged.save();
+  pdfDownloadBlob(new Blob([finalBytes], { type: 'application/pdf' }), filename);
+}
