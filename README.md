@@ -9,7 +9,7 @@ CapEx depreciation terms from the original workbook.
 ## What it does
 
 - **Project list** — save and manage estimates for as many stores/jobs as you want, not just one at a time.
-- **View page** — a clean, read-only summary of an estimate: header info, Subtotal/Tax/Total, Cost Categories, CSI Division Summary, CapEx Depreciation Summary, notes, and photos. Has a **Download PDF** button that generates and downloads a real PDF file directly — no print dialog involved, so it works the same way whether you're in a regular browser tab or the installed home-screen app. Any attached PDF documents are merged into the same file as extra pages; other file types (like .docx/.xlsx) get a placeholder page noting the filename, since their content can't be rendered without a server.
+- **View page** — a clean, read-only summary of an estimate: header info, Subtotal/Tax/Total, Cost Categories, CSI Division Summary, CapEx Depreciation Summary, notes, and photos. Has a **Print / PDF** button (uses your browser's print dialog — on iPhone that gives you "Save to Files" as a PDF).
 - **Edit page** — edit all header fields, expand any of the 23 categories to edit/add/remove line items (name, vendor, amount, taxable yes/no), add or remove whole categories, add notes, and add/remove photos. Subtotal/Tax/Total update live at the bottom as you type.
 - **Photos** — attach general jobsite/document photos to a project (not tied to individual line items). Photos are automatically resized before saving so they don't take up much space.
 - **Export / Import JSON** — export any single project, or all projects at once, as a `.json` file you can back up, email, or move to another device. Importing a file adds those project(s) to your list (it won't overwrite existing ones).

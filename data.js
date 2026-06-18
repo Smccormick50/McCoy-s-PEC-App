@@ -324,7 +324,7 @@ function viewTemplate(p) {
     <div class="action-row no-print">
       <button class="btn" id="btnDuplicate">${ICONS.duplicate}<span>Duplicate</span></button>
       <button class="btn" id="btnExport">${ICONS.download}<span>Export JSON</span></button>
-      <button class="btn" id="btnPrint">${ICONS.print}<span>Download PDF</span></button>
+      <button class="btn" id="btnPrint">${ICONS.print}<span>Print / PDF</span></button>
       <button class="btn danger" id="btnDelete">${ICONS.trash}<span>Delete</span></button>
     </div>
   </main>
@@ -392,23 +392,7 @@ function bindViewEvents(p) {
     } catch (err) { notifyStorageError(err); }
   });
   document.getElementById('btnExport').addEventListener('click', () => { exportProject(p); toast('📤 Exported'); });
-  document.getElementById('btnPrint').addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    const originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `${ICONS.print}<span>Generating…</span>`;
-    toast('🖨️ Generating PDF…');
-    try {
-      await exportProjectPdf(p);
-      toast('📄 PDF downloaded');
-    } catch (err) {
-      console.error('PDF export failed:', err);
-      alert('⚠️ Could not generate the PDF.\n\nTechnical detail: ' + (err && (err.name || err.message) ? `${err.name || ''} ${err.message || ''}`.trim() : String(err)));
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = originalHtml;
-    }
-  });
+  document.getElementById('btnPrint').addEventListener('click', () => window.print());
   document.getElementById('btnDelete').addEventListener('click', async () => {
     if (confirm(`Delete "${p.name}"? This can't be undone.`)) {
       try {
