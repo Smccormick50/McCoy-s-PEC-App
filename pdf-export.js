@@ -78,8 +78,9 @@ function pdfSectionTitle(c, text) {
 function pdfTableRows(c, rows, colWidths, align) {
   c.doc.setFont('helvetica', 'normal');
   c.doc.setFontSize(10);
+  const ROW_H = 22;
   rows.forEach(cols => {
-    c.ensure(16);
+    c.ensure(ROW_H);
     c.doc.setTextColor(...PDF_TEXT);
     let cx = PDF_MARGIN;
     cols.forEach((val, i) => {
@@ -91,12 +92,12 @@ function pdfTableRows(c, rows, colWidths, align) {
       }
       cx += w;
     });
-    c.y += 15;
+    c.y += ROW_H;
     c.doc.setDrawColor(...PDF_LINE);
-    c.doc.setLineWidth(0.5);
-    c.doc.line(PDF_MARGIN, c.y - 5, PDF_PAGE_W - PDF_MARGIN, c.y - 5);
+    c.doc.setLineWidth(0.4);
+    c.doc.line(PDF_MARGIN, c.y - 8, PDF_PAGE_W - PDF_MARGIN, c.y - 8);
   });
-  c.y += 8;
+  c.y += 6;
 }
 
 function pdfEmptyRow(c, label) {
@@ -186,14 +187,73 @@ async function buildProjectReportPdf(project) {
   doc.text(formatCurrency(total), PDF_PAGE_W - PDF_MARGIN - 16, sy, { align: 'right' });
   c.y += 98;
 
-  // ---- Cost Categories ----
+  // ---- Cost Categories (line-item detail) ----
   pdfSectionTitle(c, 'Cost Categories');
-  const catRows = project.categories
-    .map(cat => [cat.code, cat.title, formatCurrency(computeCategorySubtotal(cat)), computeCategorySubtotal(cat)])
-    .filter(r => r[3] !== 0)
-    .map(r => [r[0], r[1], r[2]]);
-  if (catRows.length) pdfTableRows(c, catRows, [50, 330, 120], ['left', 'left', 'right']);
-  else pdfEmptyRow(c, 'No costs entered yet.');
+  const activeCats = project.categories.filter(cat => computeCategorySubtotal(cat) !== 0);
+  if (!activeCats.length) {
+    pdfEmptyRow(c, 'No costs entered yet.');
+  } else {
+    activeCats.forEach(cat => {
+      const activeItems = cat.items.filter(it => num(it.amount) !== 0);
+      if (!activeItems.length) return;
+
+      // Category header row — bold, slightly indented code + title + subtotal
+      c.ensure(22);
+      doc.setFillColor(242, 240, 233); // light tint to distinguish header
+      doc.rect(PDF_MARGIN, c.y - 12, PDF_CONTENT_W, 20, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(...PDF_TEXT);
+      doc.text(cat.code, PDF_MARGIN + 4, c.y);
+      doc.text(cat.title, PDF_MARGIN + 52, c.y);
+      doc.text(formatCurrency(computeCategorySubtotal(cat)), PDF_PAGE_W - PDF_MARGIN, c.y, { align: 'right' });
+      c.y += 14;
+      doc.setDrawColor(...PDF_LINE);
+      doc.setLineWidth(0.4);
+      doc.line(PDF_MARGIN, c.y - 4, PDF_PAGE_W - PDF_MARGIN, c.y - 4);
+
+      // Individual line items
+      activeItems.forEach(item => {
+        const hasVendor = item.vendor && item.vendor.trim();
+        const rowH = hasVendor ? 30 : 20;
+        c.ensure(rowH);
+
+        // Item name (bold) + vendor (muted, smaller, second line)
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(...PDF_TEXT);
+        const nameY = hasVendor ? c.y - 4 : c.y;
+        doc.text(item.name || '(unnamed)', PDF_MARGIN + 52, nameY);
+
+        if (hasVendor) {
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          doc.setTextColor(...PDF_MUTED);
+          doc.text(item.vendor.trim(), PDF_MARGIN + 52, c.y + 9);
+        }
+
+        // Taxable indicator
+        if (item.taxable) {
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7.5);
+          doc.setTextColor(...PDF_MUTED);
+          doc.text('TAX', PDF_MARGIN + 35, nameY);
+        }
+
+        // Amount
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(...PDF_TEXT);
+        doc.text(formatCurrency(num(item.amount)), PDF_PAGE_W - PDF_MARGIN, nameY, { align: 'right' });
+
+        c.y += rowH;
+        doc.setDrawColor(...PDF_LINE);
+        doc.setLineWidth(0.3);
+        doc.line(PDF_MARGIN + 52, c.y - 8, PDF_PAGE_W - PDF_MARGIN, c.y - 8);
+      });
+      c.y += 6;
+    });
+  }
 
   // ---- CSI Division Summary ----
   pdfSectionTitle(c, 'CSI Division Summary');
@@ -228,27 +288,54 @@ async function buildProjectReportPdf(project) {
   const images = project.photos.filter(isImageAttachment);
   if (images.length) {
     pdfSectionTitle(c, 'Photos');
-    const cellW = (PDF_CONTENT_W - 14) / 2, cellImgH = 150, cellTotalH = cellImgH + 22;
+    const GAP = 12;
+    const cellW = (PDF_CONTENT_W - GAP) / 2;
+    const cellImgH = 180;
+    const captionH = 16;
+    const cellTotalH = cellImgH + captionH + 8; // image + caption + bottom padding
+
     for (let i = 0; i < images.length; i += 2) {
-      c.ensure(cellTotalH);
+      c.ensure(cellTotalH + 4);
       const rowPhotos = [images[i], images[i + 1]];
       rowPhotos.forEach((photo, col) => {
         if (!photo) return;
-        const x = PDF_MARGIN + col * (cellW + 14);
+        const x = PDF_MARGIN + col * (cellW + GAP);
+        // Light background card
+        doc.setFillColor(250, 248, 241);
+        doc.setDrawColor(...PDF_LINE);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(x, c.y, cellW, cellImgH, 2, 2, 'FD');
         try {
           const props = doc.getImageProperties(photo.dataUrl);
-          const scale = Math.min(cellW / props.width, cellImgH / props.height);
+          const scale = Math.min((cellW - 4) / props.width, (cellImgH - 4) / props.height);
           const w = props.width * scale, h = props.height * scale;
           const fmt = (photo.mimeType || '').indexOf('png') !== -1 ? 'PNG' : 'JPEG';
-          doc.addImage(photo.dataUrl, fmt, x + (cellW - w) / 2, c.y, w, h);
+          doc.addImage(photo.dataUrl, fmt, x + (cellW - w) / 2, c.y + (cellImgH - h) / 2, w, h);
         } catch (e) { /* skip photo if it fails to decode */ }
         if (photo.caption) {
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...PDF_MUTED);
-          doc.text(photo.caption, x, c.y + cellImgH + 12, { maxWidth: cellW });
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...PDF_MUTED);
+          doc.text(photo.caption, x + cellW / 2, c.y + cellImgH + 10, { align: 'center', maxWidth: cellW });
         }
       });
       c.y += cellTotalH;
     }
+  }
+
+  // ---- Page numbers ----
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...PDF_MUTED);
+    doc.text(
+      `${project.name || 'Project Cost Estimate'}  ·  Page ${i} of ${totalPages}`,
+      PDF_PAGE_W / 2, PDF_PAGE_H - 28, { align: 'center' }
+    );
+    // Bottom rule
+    doc.setDrawColor(...PDF_LINE);
+    doc.setLineWidth(0.5);
+    doc.line(PDF_MARGIN, PDF_PAGE_H - 36, PDF_PAGE_W - PDF_MARGIN, PDF_PAGE_H - 36);
   }
 
   return doc;
