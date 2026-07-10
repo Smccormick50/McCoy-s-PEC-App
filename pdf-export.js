@@ -227,65 +227,85 @@ async function buildProjectReportPdf(project) {
   if (!activeCats.length) {
     pdfEmptyRow(c, 'No costs entered yet.');
   } else {
+    const NAME_X  = PDF_MARGIN + 46; // item name left edge
+    const AMT_X   = PDF_PAGE_W - PDF_MARGIN; // amount right edge
+    const TAX_X   = AMT_X - 120;    // "taxable" badge right edge, before amount
+
     activeCats.forEach(cat => {
       const activeItems = cat.items.filter(it => num(it.amount) !== 0);
       if (!activeItems.length) return;
 
-      // Category header row — bold, slightly indented code + title + subtotal
-      c.ensure(22);
-      doc.setFillColor(242, 240, 233); // light tint to distinguish header
-      doc.rect(PDF_MARGIN, c.y - 12, PDF_CONTENT_W, 20, 'F');
+      // ---- Category header: shaded band spanning full width ----
+      const CAT_H = 24;
+      c.ensure(CAT_H + 4);
+      doc.setFillColor(235, 232, 220);
+      doc.rect(PDF_MARGIN, c.y - 14, PDF_CONTENT_W, CAT_H, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9.5);
+      doc.setFontSize(9);
       doc.setTextColor(...PDF_TEXT);
-      doc.text(cat.code, PDF_MARGIN + 4, c.y);
-      doc.text(cat.title, PDF_MARGIN + 52, c.y);
-      doc.text(formatCurrency(computeCategorySubtotal(cat)), PDF_PAGE_W - PDF_MARGIN, c.y, { align: 'right' });
+      doc.text(cat.code, PDF_MARGIN + 6, c.y);
+      // truncate long category titles to fit before the amount
+      const catTitleMaxW = PDF_CONTENT_W - 100;
+      const catTitleLines = doc.splitTextToSize(cat.title, catTitleMaxW);
+      doc.text(catTitleLines[0], NAME_X, c.y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text(formatCurrency(computeCategorySubtotal(cat)), AMT_X, c.y, { align: 'right' });
       c.y += 14;
-      doc.setDrawColor(...PDF_LINE);
-      doc.setLineWidth(0.4);
-      doc.line(PDF_MARGIN, c.y - 4, PDF_PAGE_W - PDF_MARGIN, c.y - 4);
 
-      // Individual line items
-      activeItems.forEach(item => {
-        const hasVendor = item.vendor && item.vendor.trim();
-        const rowH = hasVendor ? 30 : 20;
-        c.ensure(rowH);
+      // ---- Line items ----
+      activeItems.forEach((item, idx) => {
+        const hasVendor = !!(item.vendor && item.vendor.trim());
+        // Row height: name line (14) + optional vendor line (13) + bottom padding (10)
+        const ROW_H = 14 + (hasVendor ? 13 : 0) + 12;
+        c.ensure(ROW_H);
 
-        // Item name (bold) + vendor (muted, smaller, second line)
+        // Alternating very-light row tint for readability
+        if (idx % 2 === 0) {
+          doc.setFillColor(252, 251, 248);
+          doc.rect(PDF_MARGIN, c.y - 10, PDF_CONTENT_W, ROW_H, 'F');
+        }
+
+        // Item name
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
         doc.setTextColor(...PDF_TEXT);
-        const nameY = hasVendor ? c.y - 4 : c.y;
-        doc.text(item.name || '(unnamed)', PDF_MARGIN + 52, nameY);
+        const nameMaxW = TAX_X - NAME_X - 8;
+        const nameLines = doc.splitTextToSize(item.name || '(unnamed)', nameMaxW);
+        doc.text(nameLines[0], NAME_X, c.y);
 
+        // Vendor (second line, indented slightly, muted italic)
         if (hasVendor) {
-          doc.setFont('helvetica', 'normal');
+          doc.setFont('helvetica', 'italic');
           doc.setFontSize(8.5);
           doc.setTextColor(...PDF_MUTED);
-          doc.text(item.vendor.trim(), PDF_MARGIN + 52, c.y + 9);
+          doc.text(item.vendor.trim(), NAME_X + 4, c.y + 13);
         }
 
-        // Taxable indicator
+        // "Taxable" badge: small rounded pill right-aligned before amount
         if (item.taxable) {
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(7.5);
-          doc.setTextColor(...PDF_MUTED);
-          doc.text('TAX', PDF_MARGIN + 35, nameY);
+          const BADGE_W = 28, BADGE_H = 10, BADGE_X = TAX_X - BADGE_W - 4;
+          doc.setFillColor(220, 240, 228);
+          doc.roundedRect(BADGE_X, c.y - 8, BADGE_W, BADGE_H, 2, 2, 'F');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6.5);
+          doc.setTextColor(14, 74, 42);
+          doc.text('TAX', BADGE_X + BADGE_W / 2, c.y - 0.5, { align: 'center' });
         }
 
-        // Amount
+        // Amount — right-aligned, vertically centred in the row
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
         doc.setTextColor(...PDF_TEXT);
-        doc.text(formatCurrency(num(item.amount)), PDF_PAGE_W - PDF_MARGIN, nameY, { align: 'right' });
+        doc.text(formatCurrency(num(item.amount)), AMT_X, c.y, { align: 'right' });
 
-        c.y += rowH;
+        // Separator — drawn well below the vendor line so it never cuts through text
+        c.y += ROW_H;
         doc.setDrawColor(...PDF_LINE);
         doc.setLineWidth(0.3);
-        doc.line(PDF_MARGIN + 52, c.y - 8, PDF_PAGE_W - PDF_MARGIN, c.y - 8);
+        doc.line(PDF_MARGIN, c.y - 4, AMT_X, c.y - 4);
       });
-      c.y += 6;
+      c.y += 10; // breathing room between categories
     });
   }
 
