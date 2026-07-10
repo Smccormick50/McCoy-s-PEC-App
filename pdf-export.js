@@ -38,49 +38,13 @@ function pdfDataUrlToBytes(dataUrl) {
   return bytes;
 }
 
-function pdfDownloadBlob(blob, filename) {
-  // Desktop Chrome/Firefox/Edge: blob: URLs work correctly with <a download>.
-  // iOS Safari: ignores <a download> on blob: URLs and navigates instead,
-  //   showing raw binary — so we convert to data: URL via FileReader first.
-  // Desktop Chrome: data: PDF URLs are BLOCKED by Chrome security policy
-  //   (shown as raw binary text) — so we must NOT use data: on desktop.
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-  if (isIOS) {
-    // iOS: use data: URL which Safari respects for downloads
-    try {
-      const reader = new FileReader();
-      reader.onload = function () {
-        const a = document.createElement('a');
-        a.href = reader.result;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      };
-      reader.readAsDataURL(blob);
-    } catch (e) {
-      console.error('iOS PDF download failed:', e);
-    }
-  } else {
-    // Desktop: blob: URL + hidden anchor is the reliable cross-browser approach
-    try {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 1000);
-    } catch (e) {
-      console.error('Desktop PDF download failed:', e);
-    }
-  }
+// Returns a { url, filename } object — the caller is responsible for presenting
+// the URL to the user as a real clickable <a download> link.
+// We never auto-trigger the download here because async functions lose the
+// "user gesture" context that browsers require for programmatic file saves,
+// causing Chrome/Safari to navigate to the blob instead of saving the file.
+function makePdfResult(blob, filename) {
+  return { url: URL.createObjectURL(blob), filename };
 }
 
 // Mutable layout cursor shared across helper functions for one report build.
@@ -425,19 +389,15 @@ async function exportProjectPdf(project) {
   const filename = `PCE_${safeName || 'project'}.pdf`;
 
   if (!documents.length || typeof PDFLib === 'undefined') {
-    // Always go through pdfDownloadBlob — jsPDF's .save() uses data: URLs
-    // internally which Chrome blocks for PDFs (shows raw binary instead).
-    pdfDownloadBlob(reportDoc.output('blob'), filename);
-    return;
+    return makePdfResult(reportDoc.output('blob'), filename);
   }
 
   let merged;
   try {
     merged = await PDFLib.PDFDocument.load(reportBytes);
   } catch (e) {
-    console.warn('pdf-lib could not load the generated report; downloading it without attachments merged.', e);
-    pdfDownloadBlob(new Blob([reportBytes], { type: 'application/pdf' }), filename);
-    return;
+    console.warn('pdf-lib could not load report:', e);
+    return makePdfResult(reportDoc.output('blob'), filename);
   }
 
   for (const file of documents) {
@@ -457,5 +417,5 @@ async function exportProjectPdf(project) {
   }
 
   const finalBytes = await merged.save();
-  pdfDownloadBlob(new Blob([finalBytes], { type: 'application/pdf' }), filename);
+  return makePdfResult(new Blob([finalBytes], { type: 'application/pdf' }), filename);
 }
