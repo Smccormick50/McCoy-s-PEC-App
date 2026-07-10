@@ -39,14 +39,48 @@ function pdfDataUrlToBytes(dataUrl) {
 }
 
 function pdfDownloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  // Desktop Chrome/Firefox/Edge: blob: URLs work correctly with <a download>.
+  // iOS Safari: ignores <a download> on blob: URLs and navigates instead,
+  //   showing raw binary — so we convert to data: URL via FileReader first.
+  // Desktop Chrome: data: PDF URLs are BLOCKED by Chrome security policy
+  //   (shown as raw binary text) — so we must NOT use data: on desktop.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  if (isIOS) {
+    // iOS: use data: URL which Safari respects for downloads
+    try {
+      const reader = new FileReader();
+      reader.onload = function () {
+        const a = document.createElement('a');
+        a.href = reader.result;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      reader.readAsDataURL(blob);
+    } catch (e) {
+      console.error('iOS PDF download failed:', e);
+    }
+  } else {
+    // Desktop: blob: URL + hidden anchor is the reliable cross-browser approach
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1000);
+    } catch (e) {
+      console.error('Desktop PDF download failed:', e);
+    }
+  }
 }
 
 // Mutable layout cursor shared across helper functions for one report build.
@@ -371,7 +405,9 @@ async function exportProjectPdf(project) {
   const filename = `PCE_${safeName || 'project'}.pdf`;
 
   if (!documents.length || typeof PDFLib === 'undefined') {
-    pdfDownloadBlob(new Blob([reportBytes], { type: 'application/pdf' }), filename);
+    // Always go through pdfDownloadBlob — jsPDF's .save() uses data: URLs
+    // internally which Chrome blocks for PDFs (shows raw binary instead).
+    pdfDownloadBlob(reportDoc.output('blob'), filename);
     return;
   }
 
