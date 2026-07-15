@@ -407,36 +407,69 @@ function bindViewEvents(p) {
       btn.innerHTML = originalHtml;
       return;
     }
-
-    // Show a real tappable download link.
-    // We never auto-trigger programmatic downloads — browsers lose the
-    // "user gesture" context after async work, causing navigations instead
-    // of file saves. A real <a> the user taps is 100% reliable everywhere.
     btn.disabled = false;
     btn.innerHTML = originalHtml;
 
+    // Show the PDF in a full-screen embedded viewer.
+    // Avoids ALL download-trigger tricks (programmatic .click(), data: URLs,
+    // async gesture loss) — the browser's own PDF viewer toolbar has a
+    // reliable native Save/Download button that always works.
+    // On iOS we show a fallback message since iframes with blob PDFs don't
+    // render in Mobile Safari; the user can use Share → Save to Files instead.
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
     const overlay = document.createElement('div');
     overlay.id = 'pdfOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(14,74,42,0.82);z-index:500;display:flex;align-items:center;justify-content:center;padding:24px;';
-    overlay.innerHTML = `
-      <div style="background:#fff;border-radius:12px;padding:28px 24px;max-width:340px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.35);">
-        <div style="font-size:36px;margin-bottom:10px;">📄</div>
-        <p style="margin:0 0 20px;font-weight:600;font-size:16px;color:#1a1a1a;">PDF ready!</p>
-        <a href="${pdfResult.url}" download="${pdfResult.filename}"
-           style="display:block;background:#f5d116;color:#0e4a2a;font-weight:700;font-size:15px;padding:14px;border-radius:8px;text-decoration:none;margin-bottom:12px;"
-           onclick="setTimeout(()=>{document.getElementById('pdfOverlay')?.remove();URL.revokeObjectURL('${pdfResult.url}');},1500)">
-          ⬇️ Save PDF
-        </a>
-        <button onclick="document.getElementById('pdfOverlay').remove();URL.revokeObjectURL('${pdfResult.url}');"
-                style="background:none;border:none;color:#7a7565;font-size:13px;cursor:pointer;padding:4px;">
-          Cancel
-        </button>
-      </div>
-    `;
+    overlay.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:500',
+      'background:#333', 'display:flex', 'flex-direction:column'
+    ].join(';');
+
+    const closeBtn = `
+      <button id="pdfClose"
+        style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);
+               color:#fff;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;">
+        ✕ Close
+      </button>`;
+
+    if (isIOS) {
+      // iOS Safari can't embed blob PDFs in iframes — offer open-in-new-tab
+      overlay.innerHTML = `
+        <div style="background:#0e4a2a;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+          <span style="color:#fff;font-weight:600;flex:1;font-size:14px;">📄 ${escapeHtml(pdfResult.filename)}</span>
+          ${closeBtn}
+        </div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:32px;background:#f5f3ec;">
+          <div style="text-align:center;max-width:320px;">
+            <div style="font-size:48px;margin-bottom:16px;">📄</div>
+            <p style="font-weight:600;font-size:16px;margin:0 0 8px;">PDF ready</p>
+            <p style="color:#7a7565;font-size:13px;margin:0 0 24px;">Tap the button below to open the PDF. From there, tap the Share icon → <strong>Save to Files</strong> to save it.</p>
+            <a href="${pdfResult.url}" target="_blank"
+               style="display:block;background:#f5d116;color:#0e4a2a;font-weight:700;font-size:15px;
+                      padding:14px;border-radius:8px;text-decoration:none;">
+              Open PDF ↗
+            </a>
+          </div>
+        </div>`;
+    } else {
+      // Desktop: embed PDF directly — browser PDF viewer has its own Save button
+      overlay.innerHTML = `
+        <div style="background:#0e4a2a;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+          <span style="color:#f5d116;font-weight:600;flex:1;font-size:14px;">📄 ${escapeHtml(pdfResult.filename)}</span>
+          <span style="color:rgba(255,255,255,0.6);font-size:12px;">Use the toolbar inside the PDF to save or print</span>
+          ${closeBtn}
+        </div>
+        <iframe src="${pdfResult.url}"
+                style="flex:1;border:none;width:100%;display:block;"
+                title="PDF Preview">
+        </iframe>`;
+    }
+
     document.body.appendChild(overlay);
-    // Dismiss on backdrop tap
-    overlay.addEventListener('click', (ev) => {
-      if (ev.target === overlay) { overlay.remove(); URL.revokeObjectURL(pdfResult.url); }
+    document.getElementById('pdfClose').addEventListener('click', () => {
+      overlay.remove();
+      URL.revokeObjectURL(pdfResult.url);
     });
   });
   document.getElementById('btnDelete').addEventListener('click', async () => {
