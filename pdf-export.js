@@ -38,27 +38,49 @@ function pdfDataUrlToBytes(dataUrl) {
   return bytes;
 }
 
-// Converts PDF bytes to a base64 data URI.
-// Unlike blob: URLs (which require URL.createObjectURL and browser gesture context
-// to download), a data: URI can be embedded in an iframe and Chrome will render
-// it in its built-in PDF viewer — the user then saves via the viewer's own toolbar.
-// Chrome blocks data: PDF navigation at the TOP-LEVEL frame but NOT inside iframes.
-function uint8ArrayToBase64(bytes) {
-  let binary = '';
-  const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
+function pdfDownloadBlob(blob, filename) {
+  // Desktop Chrome/Firefox/Edge: blob: URLs work correctly with <a download>.
+  // iOS Safari: ignores <a download> on blob: URLs and navigates instead,
+  //   showing raw binary — so we convert to data: URL via FileReader first.
+  // Desktop Chrome: data: PDF URLs are BLOCKED by Chrome security policy
+  //   (shown as raw binary text) — so we must NOT use data: on desktop.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-function makePdfResult(bytesOrBlob, filename) {
-  // For a jsPDF doc we call .output('datauristring') directly.
-  // This function handles the pdf-lib Uint8Array case.
-  const base64 = (bytesOrBlob instanceof Uint8Array)
-    ? uint8ArrayToBase64(bytesOrBlob)
-    : uint8ArrayToBase64(bytesOrBlob); // shouldn't be called with a Blob now
-  return { dataUri: 'data:application/pdf;base64,' + base64, filename };
+  if (isIOS) {
+    // iOS: use data: URL which Safari respects for downloads
+    try {
+      const reader = new FileReader();
+      reader.onload = function () {
+        const a = document.createElement('a');
+        a.href = reader.result;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      reader.readAsDataURL(blob);
+    } catch (e) {
+      console.error('iOS PDF download failed:', e);
+    }
+  } else {
+    // Desktop: blob: URL + hidden anchor is the reliable cross-browser approach
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1000);
+    } catch (e) {
+      console.error('Desktop PDF download failed:', e);
+    }
+  }
 }
 
 // Mutable layout cursor shared across helper functions for one report build.
@@ -205,85 +227,65 @@ async function buildProjectReportPdf(project) {
   if (!activeCats.length) {
     pdfEmptyRow(c, 'No costs entered yet.');
   } else {
-    const NAME_X  = PDF_MARGIN + 46; // item name left edge
-    const AMT_X   = PDF_PAGE_W - PDF_MARGIN; // amount right edge
-    const TAX_X   = AMT_X - 120;    // "taxable" badge right edge, before amount
-
     activeCats.forEach(cat => {
       const activeItems = cat.items.filter(it => num(it.amount) !== 0);
       if (!activeItems.length) return;
 
-      // ---- Category header: shaded band spanning full width ----
-      const CAT_H = 24;
-      c.ensure(CAT_H + 4);
-      doc.setFillColor(235, 232, 220);
-      doc.rect(PDF_MARGIN, c.y - 14, PDF_CONTENT_W, CAT_H, 'F');
+      // Category header row — bold, slightly indented code + title + subtotal
+      c.ensure(22);
+      doc.setFillColor(242, 240, 233); // light tint to distinguish header
+      doc.rect(PDF_MARGIN, c.y - 12, PDF_CONTENT_W, 20, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
+      doc.setFontSize(9.5);
       doc.setTextColor(...PDF_TEXT);
-      doc.text(cat.code, PDF_MARGIN + 6, c.y);
-      // truncate long category titles to fit before the amount
-      const catTitleMaxW = PDF_CONTENT_W - 100;
-      const catTitleLines = doc.splitTextToSize(cat.title, catTitleMaxW);
-      doc.text(catTitleLines[0], NAME_X, c.y);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.text(formatCurrency(computeCategorySubtotal(cat)), AMT_X, c.y, { align: 'right' });
+      doc.text(cat.code, PDF_MARGIN + 4, c.y);
+      doc.text(cat.title, PDF_MARGIN + 52, c.y);
+      doc.text(formatCurrency(computeCategorySubtotal(cat)), PDF_PAGE_W - PDF_MARGIN, c.y, { align: 'right' });
       c.y += 14;
+      doc.setDrawColor(...PDF_LINE);
+      doc.setLineWidth(0.4);
+      doc.line(PDF_MARGIN, c.y - 4, PDF_PAGE_W - PDF_MARGIN, c.y - 4);
 
-      // ---- Line items ----
-      activeItems.forEach((item, idx) => {
-        const hasVendor = !!(item.vendor && item.vendor.trim());
-        // Row height: name line (14) + optional vendor line (13) + bottom padding (10)
-        const ROW_H = 14 + (hasVendor ? 13 : 0) + 12;
-        c.ensure(ROW_H);
+      // Individual line items
+      activeItems.forEach(item => {
+        const hasVendor = item.vendor && item.vendor.trim();
+        const rowH = hasVendor ? 30 : 20;
+        c.ensure(rowH);
 
-        // Alternating very-light row tint for readability
-        if (idx % 2 === 0) {
-          doc.setFillColor(252, 251, 248);
-          doc.rect(PDF_MARGIN, c.y - 10, PDF_CONTENT_W, ROW_H, 'F');
-        }
-
-        // Item name
+        // Item name (bold) + vendor (muted, smaller, second line)
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
         doc.setTextColor(...PDF_TEXT);
-        const nameMaxW = TAX_X - NAME_X - 8;
-        const nameLines = doc.splitTextToSize(item.name || '(unnamed)', nameMaxW);
-        doc.text(nameLines[0], NAME_X, c.y);
+        const nameY = hasVendor ? c.y - 4 : c.y;
+        doc.text(item.name || '(unnamed)', PDF_MARGIN + 52, nameY);
 
-        // Vendor (second line, indented slightly, muted italic)
         if (hasVendor) {
-          doc.setFont('helvetica', 'italic');
+          doc.setFont('helvetica', 'normal');
           doc.setFontSize(8.5);
           doc.setTextColor(...PDF_MUTED);
-          doc.text(item.vendor.trim(), NAME_X + 4, c.y + 13);
+          doc.text(item.vendor.trim(), PDF_MARGIN + 52, c.y + 9);
         }
 
-        // "Taxable" badge: small rounded pill right-aligned before amount
+        // Taxable indicator
         if (item.taxable) {
-          const BADGE_W = 28, BADGE_H = 10, BADGE_X = TAX_X - BADGE_W - 4;
-          doc.setFillColor(220, 240, 228);
-          doc.roundedRect(BADGE_X, c.y - 8, BADGE_W, BADGE_H, 2, 2, 'F');
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(6.5);
-          doc.setTextColor(14, 74, 42);
-          doc.text('TAX', BADGE_X + BADGE_W / 2, c.y - 0.5, { align: 'center' });
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7.5);
+          doc.setTextColor(...PDF_MUTED);
+          doc.text('TAX', PDF_MARGIN + 35, nameY);
         }
 
-        // Amount — right-aligned, vertically centred in the row
+        // Amount
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
         doc.setTextColor(...PDF_TEXT);
-        doc.text(formatCurrency(num(item.amount)), AMT_X, c.y, { align: 'right' });
+        doc.text(formatCurrency(num(item.amount)), PDF_PAGE_W - PDF_MARGIN, nameY, { align: 'right' });
 
-        // Separator — drawn well below the vendor line so it never cuts through text
-        c.y += ROW_H;
+        c.y += rowH;
         doc.setDrawColor(...PDF_LINE);
         doc.setLineWidth(0.3);
-        doc.line(PDF_MARGIN, c.y - 4, AMT_X, c.y - 4);
+        doc.line(PDF_MARGIN + 52, c.y - 8, PDF_PAGE_W - PDF_MARGIN, c.y - 8);
       });
-      c.y += 10; // breathing room between categories
+      c.y += 6;
     });
   }
 
@@ -396,27 +398,26 @@ async function addAttachmentPlaceholderPage(pdfLibDoc, file, embedFailed) {
 // extra pages, and triggers a download of the final single .pdf file.
 async function exportProjectPdf(project) {
   const reportDoc = await buildProjectReportPdf(project);
+  const reportBytes = reportDoc.output('arraybuffer');
 
   const documents = project.photos.filter(ph => !isImageAttachment(ph));
   const safeName = (project.name || 'project').replace(/[^a-z0-9\-_ ]/gi, '').trim().replace(/\s+/g, '_');
   const filename = `PCE_${safeName || 'project'}.pdf`;
 
-  // Simple path: no PDF attachments to merge — use jsPDF's own datauristring output
-  // which avoids blob URLs and URL.createObjectURL entirely.
   if (!documents.length || typeof PDFLib === 'undefined') {
-    const dataUri = reportDoc.output('datauristring');
-    return { dataUri, filename };
+    // Always go through pdfDownloadBlob — jsPDF's .save() uses data: URLs
+    // internally which Chrome blocks for PDFs (shows raw binary instead).
+    pdfDownloadBlob(reportDoc.output('blob'), filename);
+    return;
   }
 
-  // Complex path: merge attached PDFs via pdf-lib
-  const reportBytes = reportDoc.output('arraybuffer');
   let merged;
   try {
     merged = await PDFLib.PDFDocument.load(reportBytes);
   } catch (e) {
-    console.warn('pdf-lib could not load report:', e);
-    const dataUri = reportDoc.output('datauristring');
-    return { dataUri, filename };
+    console.warn('pdf-lib could not load the generated report; downloading it without attachments merged.', e);
+    pdfDownloadBlob(new Blob([reportBytes], { type: 'application/pdf' }), filename);
+    return;
   }
 
   for (const file of documents) {
@@ -435,6 +436,6 @@ async function exportProjectPdf(project) {
     }
   }
 
-  const finalBytes = await merged.save(); // Uint8Array
-  return makePdfResult(finalBytes, filename);
+  const finalBytes = await merged.save();
+  pdfDownloadBlob(new Blob([finalBytes], { type: 'application/pdf' }), filename);
 }
