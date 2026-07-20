@@ -857,14 +857,31 @@ async function handleImportFile(e) {
   e.target.value = '';
   if (!file) return;
   try {
-    const text = await file.text();
+    // file.text() is not supported in all iOS Safari versions —
+    // use FileReader as a reliable cross-platform fallback.
+    const text = await new Promise((resolve, reject) => {
+      if (typeof file.text === 'function') {
+        file.text().then(resolve).catch(() => {
+          // fall through to FileReader on failure
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new Error('Could not read file'));
+          r.readAsText(file);
+        });
+      } else {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(new Error('Could not read file'));
+        r.readAsText(file);
+      }
+    });
     const projects = parseImportedJSON(text);
     for (const proj of projects) await DB.put(proj);
     toast(`📥 Imported ${projects.length} project${projects.length === 1 ? '' : 's'}`);
     go('#/list');
     renderRoute();
   } catch (err) {
-    alert('Import failed: ' + err.message);
+    alert('⚠️ Import failed: ' + (err && err.message ? err.message : String(err)));
   }
 }
 
