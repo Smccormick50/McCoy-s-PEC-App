@@ -110,6 +110,9 @@ function pdfEmptyRow(c, label) {
 }
 
 async function buildProjectReportPdf(project) {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    throw new Error('PDF library still loading — please wait a moment and try again.');
+  }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const c = makeCursor(doc);

@@ -32,7 +32,7 @@
       if (app && app.dataset.booted !== '1' && !app.innerHTML.trim()) {
         showBootError('The app never finished loading and no specific error was reported. This usually means one of the script files (data.js, db.js, model.js, app.js) failed to load — double check all files from the zip were uploaded to the same folder.');
       }
-    }, 6000);
+    }, 30000);
   });
 })();
 </script>
@@ -52,8 +52,6 @@
 
 <link rel="stylesheet" href="styles.css">
 <script src="localforage.min.js"></script>
-<script src="jspdf.umd.min.js"></script>
-<script src="pdf-lib.min.js"></script>
 </head>
 <body>
 
@@ -69,6 +67,9 @@
 <script src="data.js"></script>
 <script src="db.js"></script>
 <script src="model.js"></script>
+<!-- jsPDF and pdf-lib are large (~1MB total) — load last so they don't block app startup -->
+<script src="jspdf.umd.min.js"></script>
+<script src="pdf-lib.min.js"></script>
 <script src="pdf-export.js"></script>
 <script src="app.js"></script>
 </body>
